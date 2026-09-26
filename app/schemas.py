@@ -138,3 +138,120 @@ class DiffOut(BaseModel):
     new_event_cutoff_id: str | None
     student_changes: list[dict[str, Any]]
     students_affected: int
+
+
+# ---------------------------------------------------------------------------
+# 合作院校事件交换（版本化批次 + 逐条回执）
+# ---------------------------------------------------------------------------
+
+EXCHANGE_SCHEMA_VERSION = "v1"
+
+
+class ExchangeItemIn(BaseModel):
+    """批次中的单条事件。``client_line_id`` 为发送方自带的可选行标识。"""
+
+    event_id: str = Field(..., min_length=1, max_length=128)
+    event_type: Literal["checkin", "mentor_confirm", "leave_correction"]
+    student_id: str = Field(..., min_length=1, max_length=128)
+    payload: dict[str, Any]
+    client_line_id: str = Field("", max_length=128)
+
+
+class ExchangeBatchIn(BaseModel):
+    batch_id: str = Field(..., min_length=1, max_length=128)
+    events: list[ExchangeItemIn] = Field(default_factory=list)
+
+
+class ExchangeSupplementItemIn(ExchangeItemIn):
+    """补交条目：引用原批次行号进行修正/确认，或不引用以补交新条目。"""
+
+    references: int | None = Field(None, ge=1)
+    resolution: Literal["confirm"] | None = None
+
+
+class ExchangeSupplementIn(BaseModel):
+    events: list[ExchangeSupplementItemIn] = Field(default_factory=list)
+
+
+class ExchangeReceiptItemOut(BaseModel):
+    line_no: int
+    revision: int
+    event_id: str
+    event_type: str
+    student_id: str
+    status: str
+    reason_code: str | None = None
+    reason_detail: str | None = None
+    references_line: int | None = None
+    resolved_by_line: int | None = None
+    client_line_id: str = ""
+    payload_fingerprint: str
+
+
+class ExchangeBatchOut(BaseModel):
+    sender_id: str
+    batch_id: str
+    plan_version: str
+    schema_version: str
+    state: str
+    revision: int
+    content_fingerprint: str
+    cursor: int
+    total_count: int
+    accepted_count: int
+    duplicate_count: int
+    conflict_count: int
+    pending_count: int
+    resolved_count: int = 0
+    closed: bool = False
+
+
+class ExchangeReceiptOut(BaseModel):
+    batch: ExchangeBatchOut
+    items: list[ExchangeReceiptItemOut]
+    next_cursor: int | None = None
+
+
+class ExchangeAcceptedOut(BaseModel):
+    line_no: int
+    event_id: str
+
+
+class ExchangeReceiveOut(BaseModel):
+    batch: ExchangeBatchOut
+    replay: bool
+    resumed: bool
+    accepted: list[ExchangeAcceptedOut]
+    duplicates: list[int]
+    conflicts: list[int]
+    pending_review: list[int]
+
+
+class ExchangeCloseIn(BaseModel):
+    force: bool = False
+    reason: str = Field("", max_length=256)
+
+
+class ExchangeCloseOut(BaseModel):
+    batch: ExchangeBatchOut
+    closed: bool
+    unresolved_conflicts: int
+    unresolved_pending: int
+
+
+class ExchangeReconcileItemOut(BaseModel):
+    line_no: int
+    status: str
+    event_id: str
+    issue: str | None = None
+    event_row_id: int | None = None
+
+
+class ExchangeReconcileOut(BaseModel):
+    batch: ExchangeBatchOut
+    fingerprint_ok: bool
+    cursor_complete: bool
+    events_expected: int
+    events_found: int
+    balanced: bool
+    items: list[ExchangeReconcileItemOut]
