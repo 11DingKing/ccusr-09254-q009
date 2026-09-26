@@ -12,6 +12,16 @@
 python3 -m pytest -q
 ```
 
+## 外部事件交换
+
+合作院校通过 `/api/exchange` 批量推送签到事件，请求需携带 `X-Sender-Id` 头，发送方只能访问自己的批次，跨发送方访问一律按不存在处理。
+
+- `POST /api/exchange/batches`：接收版本化批次（声明 `schema_version`），返回逐条回执（已接受/重复/冲突/待审核）、整批内容指纹与重放游标；相同批次号与相同内容重发时幂等重放已存回执，内容不同则返回 409；已接受事件写入事件流且绝不重复写入。
+- `GET /api/exchange/batches/{batch_id}/receipts?after_seq=&limit=`：按重放游标增量拉取回执，支持断点续传。
+- `POST /api/exchange/batches/{batch_id}/supplements`：修正冲突或待审核条目，`retry_of` 引用原条目号，重试后原条目转为 superseded 保留审计轨迹；已接受条目不可改写。
+- `POST /api/exchange/batches/{batch_id}/close`：按预期版本号关闭批次，乐观锁保证并发关闭只有一个成功；关闭后禁止补交。
+- `GET /api/exchange/batches/{batch_id}/reconciliation`：输出计数自洽性、事件流命中数与指纹比对结果的对账单。
+
 ## 编译检查
 
 ```bash
